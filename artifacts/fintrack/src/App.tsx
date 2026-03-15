@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-// Pages
 import Dashboard from "./pages/dashboard";
 import Transactions from "./pages/transactions";
 import Budgets from "./pages/budgets";
@@ -44,7 +43,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter hook={useHashLocation} base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <WouterRouter hook={useHashLocation}>
           <Router />
         </WouterRouter>
         <Toaster />
