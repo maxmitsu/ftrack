@@ -225,4 +225,55 @@ export default function Settings() {
       </div>
     </Layout>
   );
+  import { useState } from "react";
+import {
+  connectGoogleDrive,
+  pullCloudState,
+  pushCloudState,
+} from "@/lib/cloud-storage";
+
+export default function Settings() {
+  const [status, setStatus] = useState("");
+
+  async function onConnect() {
+    try {
+      setStatus("Conectando con Google Drive...");
+      await connectGoogleDrive();
+      setStatus("Google Drive conectado");
+    } catch (e: any) {
+      setStatus(e.message || "Error al conectar");
+    }
+  }
+
+  async function onLoad() {
+    try {
+      setStatus("Cargando datos desde Drive...");
+      await pullCloudState();
+      setStatus("Datos cargados");
+      location.reload();
+    } catch (e: any) {
+      setStatus(e.message || "Error al cargar");
+    }
+  }
+
+  async function onSave() {
+    try {
+      setStatus("Guardando datos en Drive...");
+      await pushCloudState();
+      setStatus("Datos guardados en Drive");
+    } catch (e: any) {
+      setStatus(e.message || "Error al guardar");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold">Configuración</h1>
+      <button onClick={onConnect}>Conectar Google Drive</button>
+      <button onClick={onLoad}>Cargar desde Drive</button>
+      <button onClick={onSave}>Guardar en Drive</button>
+      <p>{status}</p>
+    </div>
+  );
+}
 }
