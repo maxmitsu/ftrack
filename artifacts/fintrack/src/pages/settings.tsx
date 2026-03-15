@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,19 @@ import {
   useCreateCategory,
   useDeleteCategory,
   getListCategoriesQueryKey,
-  connectGoogleDrive,
-  disconnectGoogleDrive,
-  getDriveConfiguration,
-  syncGoogleDrive,
-  useDriveStatus,
+  getListAccountsQueryKey,
+  getListBudgetsQueryKey,
+  getListGoalsQueryKey,
+  getListRecurringQueryKey,
+  getListTransactionsQueryKey,
+  initGoogleDriveAuth,
+  loginWithGoogleDrive,
+  syncStateFromGoogleDrive,
+  syncStateToGoogleDrive,
+  getGoogleDriveStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Cloud, CloudOff, RefreshCw, Tags, Trash2 } from "lucide-react";
+import { Trash2, Tags, Cloud, Download, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getCategoryIcon } from "@/lib/utils";
 
@@ -23,11 +28,29 @@ export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: categories, isLoading } = useListCategories();
-  const { data: driveStatus } = useDriveStatus();
-  const driveConfig = getDriveConfiguration();
-
   const [catName, setCatName] = useState("");
-  const [driveBusy, setDriveBusy] = useState(false);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState(getGoogleDriveStatus());
+
+  useEffect(() => {
+    try {
+      initGoogleDriveAuth();
+      setCloudStatus(getGoogleDriveStatus());
+    } catch {
+      // Se inicializa cuando el usuario pulsa el botón.
+    }
+  }, []);
+
+  const invalidateAll = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListBudgetsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListRecurringQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() }),
+    ]);
+  };
 
   const createMutation = useCreateCategory({
     mutation: {
@@ -35,8 +58,8 @@ export default function Settings() {
         queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
         toast({ title: "Categoría agregada" });
         setCatName("");
-      }
-    }
+      },
+    },
   });
 
   const deleteMutation = useDeleteCategory({
@@ -44,121 +67,107 @@ export default function Settings() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
         toast({ title: "Categoría eliminada" });
-      }
-    }
+      },
+    },
   });
-
-  const refreshAllData = () => {
-    void queryClient.invalidateQueries();
-  };
-
-  const handleConnectDrive = async () => {
-    try {
-      setDriveBusy(true);
-      await connectGoogleDrive();
-      refreshAllData();
-      toast({ title: "Google Drive conectado", description: "Los datos ya se están guardando en tu carpeta privada appDataFolder." });
-    } catch (error) {
-      toast({
-        title: "No se pudo conectar Google Drive",
-        description: error instanceof Error ? error.message : "Revisa la configuración OAuth de Google.",
-        variant: "destructive",
-      });
-    } finally {
-      setDriveBusy(false);
-    }
-  };
-
-  const handleSyncDrive = async () => {
-    try {
-      setDriveBusy(true);
-      await syncGoogleDrive();
-      toast({ title: "Sincronización completada" });
-    } catch (error) {
-      toast({
-        title: "Error al sincronizar",
-        description: error instanceof Error ? error.message : "No se pudo subir el archivo a Google Drive.",
-        variant: "destructive",
-      });
-    } finally {
-      setDriveBusy(false);
-    }
-  };
-
-  const handleDisconnectDrive = () => {
-    disconnectGoogleDrive();
-    toast({ title: "Google Drive desconectado" });
-  };
 
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!catName.trim()) return;
-    createMutation.mutate({
-      data: { name: catName.trim() }
-    });
+    createMutation.mutate({ data: { name: catName.trim() } });
+  };
+
+  const handleConnect = async () => {
+    try {
+      setCloudBusy(true);
+      await loginWithGoogleDrive();
+      setCloudStatus(getGoogleDriveStatus());
+      toast({ title: "Google Drive conectado" });
+    } catch (error) {
+      toast({
+        title: "No se pudo conectar con Google Drive",
+        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    try {
+      setCloudBusy(true);
+      await syncStateToGoogleDrive();
+      setCloudStatus(getGoogleDriveStatus());
+      toast({ title: "Datos guardados en Google Drive" });
+    } catch (error) {
+      toast({
+        title: "No se pudieron guardar los datos",
+        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      setCloudBusy(true);
+      await syncStateFromGoogleDrive();
+      setCloudStatus(getGoogleDriveStatus());
+      await invalidateAll();
+      toast({ title: "Datos cargados desde Google Drive" });
+    } catch (error) {
+      toast({
+        title: "No se pudieron cargar los datos",
+        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setCloudBusy(false);
+    }
   };
 
   return (
     <Layout title="Configuración">
-      <div className="max-w-4xl space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2 max-w-5xl">
         <Card className="border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              {driveStatus?.signedIn ? <Cloud className="w-5 h-5 text-primary" /> : <CloudOff className="w-5 h-5 text-primary" />} Google Drive
+              <Cloud className="w-5 h-5 text-primary" /> Google Drive
             </CardTitle>
             <CardDescription>
-              Usa GitHub Pages para el frontend y guarda todos los datos en un archivo JSON privado dentro de Google Drive.
+              Inicia sesión con Google y guarda toda tu información en un archivo JSON dentro de tu Drive.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!driveConfig.configured ? (
-              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground space-y-2">
-                <p>Falta la variable <code>VITE_GOOGLE_CLIENT_ID</code>.</p>
-                <p>
-                  Crea un OAuth Client ID en Google Cloud, añade como JavaScript origin tu URL de GitHub Pages y luego define esa variable al compilar.
-                </p>
+            <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 text-sm">
+              <div className="font-medium text-foreground">Estado</div>
+              <div className="text-muted-foreground mt-1">
+                {cloudStatus.connected ? "Sesión iniciada con Google." : "Sin sesión iniciada."}
               </div>
-            ) : (
-              <>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Estado</p>
-                    <p className="mt-1 font-medium">{driveStatus?.signedIn ? "Conectado" : "Sin conectar"}</p>
-                  </div>
-                  <div className="rounded-lg border p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Archivo</p>
-                    <p className="mt-1 font-medium">fintrack-data.json</p>
-                  </div>
-                  <div className="rounded-lg border p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Última sincronización</p>
-                    <p className="mt-1 font-medium">{driveStatus?.lastSyncedAt ? new Date(driveStatus.lastSyncedAt).toLocaleString() : "Todavía no"}</p>
-                  </div>
-                </div>
+              <div className="text-muted-foreground">
+                {cloudStatus.hasFile ? "Archivo vinculado en Drive listo para sincronizar." : "Todavía no hay archivo vinculado en Drive."}
+              </div>
+            </div>
 
-                {driveStatus?.error && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                    {driveStatus.error}
-                  </div>
-                )}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleConnect} disabled={cloudBusy}>
+                <Cloud className="w-4 h-4 mr-2" />
+                {cloudBusy ? "Procesando..." : "Iniciar sesión con Google"}
+              </Button>
+              <Button variant="outline" onClick={handleUpload} disabled={cloudBusy}>
+                <Upload className="w-4 h-4 mr-2" /> Guardar en Drive
+              </Button>
+              <Button variant="outline" onClick={handleDownload} disabled={cloudBusy}>
+                <Download className="w-4 h-4 mr-2" /> Cargar desde Drive
+              </Button>
+            </div>
 
-                <div className="flex flex-wrap gap-3">
-                  {!driveStatus?.signedIn ? (
-                    <Button onClick={handleConnectDrive} disabled={driveBusy}>
-                      <Cloud className="mr-2 h-4 w-4" /> Conectar Google Drive
-                    </Button>
-                  ) : (
-                    <>
-                      <Button onClick={handleSyncDrive} disabled={driveBusy}>
-                        <RefreshCw className="mr-2 h-4 w-4" /> Sincronizar ahora
-                      </Button>
-                      <Button variant="outline" onClick={handleDisconnectDrive} disabled={driveBusy}>
-                        <CloudOff className="mr-2 h-4 w-4" /> Desconectar
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Necesitas configurar <code>VITE_GOOGLE_CLIENT_ID</code> en GitHub Actions para que el login funcione al publicar la app.
+            </p>
           </CardContent>
         </Card>
 
@@ -176,7 +185,7 @@ export default function Settings() {
               <Input
                 placeholder="Ej. Mascotas, Gym, Suscripciones..."
                 value={catName}
-                onChange={e => setCatName(e.target.value)}
+                onChange={(e) => setCatName(e.target.value)}
                 className="bg-background flex-1"
                 required
               />
@@ -198,7 +207,7 @@ export default function Settings() {
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => {
-                        if(confirm(`¿Eliminar la categoría "${c.name}"?`)) deleteMutation.mutate({ id: c.id });
+                        if (confirm(`¿Eliminar la categoría "${c.name}"?`)) deleteMutation.mutate({ id: c.id });
                       }}
                     >
                       <Trash2 className="w-4 h-4" />
