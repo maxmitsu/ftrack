@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -29,20 +29,10 @@ jobs:
         run: pnpm install
 
       - name: Build frontend
-        run: pnpm --filter @workspace/fintrack build
-
-      - name: Show generated files
         run: |
-          echo "== repo root =="
-          ls -la
-          echo "== artifacts =="
-          ls -la artifacts || true
-          echo "== fintrack =="
-          ls -la artifacts/fintrack || true
-          echo "== dist =="
-          ls -la artifacts/fintrack/dist || true
-          echo "== dist/public =="
-          ls -la artifacts/fintrack/dist/public || true
+          cd artifacts/fintrack
+          pnpm install
+          pnpm build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
