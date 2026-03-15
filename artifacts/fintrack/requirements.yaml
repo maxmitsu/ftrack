@@ -1,0 +1,9 @@
+packages:
+  "recharts": "Data visualization for finance charts"
+  "date-fns": "Date formatting and manipulation"
+  "lucide-react": "Icons"
+  "clsx": "Utility for constructing className strings"
+  "tailwind-merge": "Utility for merging tailwind classes safely"
+  "react-hook-form": "Form state management"
+  "@hookform/resolvers": "Zod resolver for react-hook-form"
+  "zod": "Schema validation"
