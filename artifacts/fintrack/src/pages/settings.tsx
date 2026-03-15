@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -86,7 +92,8 @@ export default function Settings() {
     } catch (error) {
       toast({
         title: "No se pudo conectar con Google Drive",
-        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        description:
+          error instanceof Error ? error.message : "Inténtalo de nuevo.",
         variant: "destructive",
       });
     } finally {
@@ -103,7 +110,8 @@ export default function Settings() {
     } catch (error) {
       toast({
         title: "No se pudieron guardar los datos",
-        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        description:
+          error instanceof Error ? error.message : "Inténtalo de nuevo.",
         variant: "destructive",
       });
     } finally {
@@ -121,7 +129,8 @@ export default function Settings() {
     } catch (error) {
       toast({
         title: "No se pudieron cargar los datos",
-        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        description:
+          error instanceof Error ? error.message : "Inténtalo de nuevo.",
         variant: "destructive",
       });
     } finally {
@@ -138,17 +147,22 @@ export default function Settings() {
               <Cloud className="w-5 h-5 text-primary" /> Google Drive
             </CardTitle>
             <CardDescription>
-              Inicia sesión con Google y guarda toda tu información en un archivo JSON dentro de tu Drive.
+              Inicia sesión con Google y guarda toda tu información en un archivo
+              JSON dentro de tu Drive.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 text-sm">
               <div className="font-medium text-foreground">Estado</div>
               <div className="text-muted-foreground mt-1">
-                {cloudStatus.connected ? "Sesión iniciada con Google." : "Sin sesión iniciada."}
+                {cloudStatus.connected
+                  ? "Sesión iniciada con Google."
+                  : "Sin sesión iniciada."}
               </div>
               <div className="text-muted-foreground">
-                {cloudStatus.hasFile ? "Archivo vinculado en Drive listo para sincronizar." : "Todavía no hay archivo vinculado en Drive."}
+                {cloudStatus.hasFile
+                  ? "Archivo vinculado en Drive listo para sincronizar."
+                  : "Todavía no hay archivo vinculado en Drive."}
               </div>
             </div>
 
@@ -157,16 +171,29 @@ export default function Settings() {
                 <Cloud className="w-4 h-4 mr-2" />
                 {cloudBusy ? "Procesando..." : "Iniciar sesión con Google"}
               </Button>
-              <Button variant="outline" onClick={handleUpload} disabled={cloudBusy}>
-                <Upload className="w-4 h-4 mr-2" /> Guardar en Drive
+
+              <Button
+                variant="outline"
+                onClick={handleUpload}
+                disabled={cloudBusy}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Guardar en Drive
               </Button>
-              <Button variant="outline" onClick={handleDownload} disabled={cloudBusy}>
-                <Download className="w-4 h-4 mr-2" /> Cargar desde Drive
+
+              <Button
+                variant="outline"
+                onClick={handleDownload}
+                disabled={cloudBusy}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Cargar desde Drive
               </Button>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Necesitas configurar <code>VITE_GOOGLE_CLIENT_ID</code> en GitHub Actions para que el login funcione al publicar la app.
+              Necesitas configurar <code>VITE_GOOGLE_CLIENT_ID</code> en GitHub
+              Actions para que el login funcione al publicar la app.
             </p>
           </CardContent>
         </Card>
@@ -174,10 +201,12 @@ export default function Settings() {
         <Card className="border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Tags className="w-5 h-5 text-primary" /> Categorías de Transacciones
+              <Tags className="w-5 h-5 text-primary" /> Categorías de
+              Transacciones
             </CardTitle>
             <CardDescription>
-              Personaliza las categorías disponibles para clasificar tus ingresos y gastos.
+              Personaliza las categorías disponibles para clasificar tus ingresos
+              y gastos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -189,25 +218,39 @@ export default function Settings() {
                 className="bg-background flex-1"
                 required
               />
-              <Button type="submit" disabled={createMutation.isPending}>Agregar</Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                Agregar
+              </Button>
             </form>
 
             {isLoading ? (
-              <div className="py-4 text-center text-muted-foreground">Cargando categorías...</div>
+              <div className="py-4 text-center text-muted-foreground">
+                Cargando categorías...
+              </div>
             ) : categories?.length ? (
               <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                 {categories.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-secondary/30 group hover:bg-secondary transition-colors">
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-secondary/30 group hover:bg-secondary transition-colors"
+                  >
                     <div className="flex items-center gap-3">
-                      <span className="text-xl opacity-80">{getCategoryIcon(c.name)}</span>
-                      <span className="font-medium text-foreground">{c.name}</span>
+                      <span className="text-xl opacity-80">
+                        {getCategoryIcon(c.name)}
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {c.name}
+                      </span>
                     </div>
+
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => {
-                        if (confirm(`¿Eliminar la categoría "${c.name}"?`)) deleteMutation.mutate({ id: c.id });
+                        if (confirm(`¿Eliminar la categoría "${c.name}"?`)) {
+                          deleteMutation.mutate({ id: c.id });
+                        }
                       }}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -225,55 +268,4 @@ export default function Settings() {
       </div>
     </Layout>
   );
-  import { useState } from "react";
-import {
-  connectGoogleDrive,
-  pullCloudState,
-  pushCloudState,
-} from "@/lib/cloud-storage";
-
-export default function Settings() {
-  const [status, setStatus] = useState("");
-
-  async function onConnect() {
-    try {
-      setStatus("Conectando con Google Drive...");
-      await connectGoogleDrive();
-      setStatus("Google Drive conectado");
-    } catch (e: any) {
-      setStatus(e.message || "Error al conectar");
-    }
-  }
-
-  async function onLoad() {
-    try {
-      setStatus("Cargando datos desde Drive...");
-      await pullCloudState();
-      setStatus("Datos cargados");
-      location.reload();
-    } catch (e: any) {
-      setStatus(e.message || "Error al cargar");
-    }
-  }
-
-  async function onSave() {
-    try {
-      setStatus("Guardando datos en Drive...");
-      await pushCloudState();
-      setStatus("Datos guardados en Drive");
-    } catch (e: any) {
-      setStatus(e.message || "Error al guardar");
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Configuración</h1>
-      <button onClick={onConnect}>Conectar Google Drive</button>
-      <button onClick={onLoad}>Cargar desde Drive</button>
-      <button onClick={onSave}>Guardar en Drive</button>
-      <p>{status}</p>
-    </div>
-  );
-}
 }
