@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+      PORT: "4173"
+      BASE_PATH: "/ftrack/"
 
     steps:
       - name: Checkout
@@ -35,6 +37,9 @@ jobs:
         run: |
           cd artifacts/fintrack
           pnpm build
+
+      - name: Disable Jekyll
+        run: touch artifacts/fintrack/dist/public/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
