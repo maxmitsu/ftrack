@@ -1,0 +1,599 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: FinTrack API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: transactions
+    description: Transaction operations
+  - name: budgets
+    description: Budget operations
+  - name: accounts
+    description: Account operations
+  - name: goals
+    description: Savings goal operations
+  - name: recurring
+    description: Recurring payments operations
+  - name: categories
+    description: Category operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /transactions:
+    get:
+      operationId: listTransactions
+      tags: [transactions]
+      summary: List all transactions
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+    post:
+      operationId: createTransaction
+      tags: [transactions]
+      summary: Create a transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransactionInput"
+      responses:
+        "201":
+          description: Created transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /transactions/{id}:
+    put:
+      operationId: updateTransaction
+      tags: [transactions]
+      summary: Update a transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransactionInput"
+      responses:
+        "200":
+          description: Updated transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+    delete:
+      operationId: deleteTransaction
+      tags: [transactions]
+      summary: Delete a transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /budgets:
+    get:
+      operationId: listBudgets
+      tags: [budgets]
+      summary: List all budgets
+      responses:
+        "200":
+          description: List of budgets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Budget"
+    post:
+      operationId: createBudget
+      tags: [budgets]
+      summary: Create a budget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBudgetInput"
+      responses:
+        "201":
+          description: Created budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Budget"
+
+  /budgets/{id}:
+    delete:
+      operationId: deleteBudget
+      tags: [budgets]
+      summary: Delete a budget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /accounts:
+    get:
+      operationId: listAccounts
+      tags: [accounts]
+      summary: List all accounts
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+    post:
+      operationId: createAccount
+      tags: [accounts]
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountInput"
+      responses:
+        "201":
+          description: Created account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+  /accounts/{id}:
+    delete:
+      operationId: deleteAccount
+      tags: [accounts]
+      summary: Delete an account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /goals:
+    get:
+      operationId: listGoals
+      tags: [goals]
+      summary: List savings goals
+      responses:
+        "200":
+          description: List of goals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goal"
+    post:
+      operationId: createGoal
+      tags: [goals]
+      summary: Create a savings goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGoalInput"
+      responses:
+        "201":
+          description: Created goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+
+  /goals/{id}:
+    put:
+      operationId: updateGoal
+      tags: [goals]
+      summary: Update a goal (e.g. add savings)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGoalInput"
+      responses:
+        "200":
+          description: Updated goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+    delete:
+      operationId: deleteGoal
+      tags: [goals]
+      summary: Delete a goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /recurring:
+    get:
+      operationId: listRecurring
+      tags: [recurring]
+      summary: List recurring payments
+      responses:
+        "200":
+          description: List of recurring payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringPayment"
+    post:
+      operationId: createRecurring
+      tags: [recurring]
+      summary: Create a recurring payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecurringInput"
+      responses:
+        "201":
+          description: Created recurring payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringPayment"
+
+  /recurring/{id}:
+    delete:
+      operationId: deleteRecurring
+      tags: [recurring]
+      summary: Delete a recurring payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /recurring/{id}/pay:
+    post:
+      operationId: payRecurring
+      tags: [recurring]
+      summary: Mark a recurring payment as paid (creates transaction)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Created transaction from recurring payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [categories]
+      summary: List categories
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: createCategory
+      tags: [categories]
+      summary: Create a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryInput"
+      responses:
+        "201":
+          description: Created category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  /categories/{id}:
+    delete:
+      operationId: deleteCategory
+      tags: [categories]
+      summary: Delete a category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        cat:
+          type: string
+        amount:
+          type: number
+        type:
+          type: string
+          enum: [ingreso, gasto]
+        date:
+          type: string
+        accountId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - cat
+        - amount
+        - type
+        - date
+        - createdAt
+
+    CreateTransactionInput:
+      type: object
+      properties:
+        name:
+          type: string
+        cat:
+          type: string
+        amount:
+          type: number
+        type:
+          type: string
+          enum: [ingreso, gasto]
+        date:
+          type: string
+        accountId:
+          type: integer
+          nullable: true
+      required:
+        - name
+        - cat
+        - amount
+        - type
+        - date
+
+    Budget:
+      type: object
+      properties:
+        id:
+          type: integer
+        cat:
+          type: string
+        limit:
+          type: number
+        color:
+          type: string
+      required:
+        - id
+        - cat
+        - limit
+        - color
+
+    CreateBudgetInput:
+      type: object
+      properties:
+        cat:
+          type: string
+        limit:
+          type: number
+        color:
+          type: string
+      required:
+        - cat
+        - limit
+
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        bank:
+          type: string
+        bal:
+          type: number
+        color:
+          type: string
+      required:
+        - id
+        - name
+        - bank
+        - bal
+        - color
+
+    CreateAccountInput:
+      type: object
+      properties:
+        name:
+          type: string
+        bank:
+          type: string
+        bal:
+          type: number
+      required:
+        - name
+        - bal
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        saved:
+          type: number
+        target:
+          type: number
+        color:
+          type: string
+      required:
+        - id
+        - name
+        - saved
+        - target
+        - color
+
+    CreateGoalInput:
+      type: object
+      properties:
+        name:
+          type: string
+        saved:
+          type: number
+        target:
+          type: number
+        color:
+          type: string
+      required:
+        - name
+        - target
+
+    RecurringPayment:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        amount:
+          type: number
+        dayOfMonth:
+          type: integer
+        accountId:
+          type: integer
+          nullable: true
+      required:
+        - id
+        - name
+        - amount
+        - dayOfMonth
+
+    CreateRecurringInput:
+      type: object
+      properties:
+        name:
+          type: string
+        amount:
+          type: number
+        dayOfMonth:
+          type: integer
+        accountId:
+          type: integer
+          nullable: true
+      required:
+        - name
+        - amount
+        - dayOfMonth
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+      required:
+        - id
+        - name
