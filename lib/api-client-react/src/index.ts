@@ -1,5 +1,4 @@
-import { useMutation, useQuery, type QueryKey, type UseMutationOptions, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useMutation, useQuery, type QueryKey, type UseMutationOptions, type UseMutationResult, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
 import type {
   Account,
   Budget,
@@ -10,7 +9,6 @@ import type {
   CreateRecurringInput,
   CreateTransactionInput,
   Goal,
-  HealthStatus,
   RecurringPayment,
   Transaction,
 } from "./generated/api.schemas";
@@ -23,45 +21,11 @@ export interface CreateCategoryInput {
   color?: string | null;
 }
 
-export type ErrorType<T = unknown> = Error & { data?: T };
-export type BodyType<T> = T;
-
-type AwaitedInput<T> = PromiseLike<T> | T;
-type Awaited<T> = T extends AwaitedInput<infer U> ? U : never;
-type QueryOptions<TFn extends (...args: any[]) => Promise<any>, TData = Awaited<ReturnType<TFn>>, TError = ErrorType<unknown>> = {
-  query?: UseQueryOptions<Awaited<ReturnType<TFn>>, TError, TData>;
-};
-type MutationOptions<TFn extends (...args: any[]) => Promise<any>, TVariables, TError = ErrorType<unknown>, TContext = unknown> = {
-  mutation?: UseMutationOptions<Awaited<ReturnType<TFn>>, TError, TVariables, TContext>;
-};
-
-type FintrackData = {
-  version: 1;
-  updatedAt: string;
-  nextIds: {
-    transactions: number;
-    budgets: number;
-    accounts: number;
-    goals: number;
-    recurring: number;
-    categories: number;
-  };
-  transactions: Transaction[];
-  budgets: Budget[];
-  accounts: Account[];
-  goals: Goal[];
-  recurring: RecurringPayment[];
-  categories: Category[];
-};
-
-type DriveStatus = {
-  configured: boolean;
-  signedIn: boolean;
-  syncing: boolean;
-  lastSyncedAt: string | null;
-  error: string | null;
-  email: string | null;
-};
+const STORAGE_KEY = "fintrack_state_v1";
+const DRIVE_FILE_ID_KEY = "fintrack_drive_file_id";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_FILE_NAME = "fintrack-data.json";
+const DRIVE_MIME_TYPE = "application/json";
 
 declare global {
   interface Window {
@@ -69,603 +33,463 @@ declare global {
   }
 }
 
-const STORAGE_KEY = "fintrack.data.v1";
-const DRIVE_FILE_NAME = "fintrack-data.json";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
-const DEFAULT_CATEGORY_NAMES = [
+type FinState = {
+  transactions: Transaction[];
+  budgets: Budget[];
+  accounts: Account[];
+  goals: Goal[];
+  recurring: RecurringPayment[];
+  categories: Category[];
+  counters: Record<string, number>;
+  updatedAt: string;
+};
+
+type CloudStatus = {
+  connected: boolean;
+  hasFile: boolean;
+  fileId: string | null;
+};
+
+type MutationOptions<TData, TVariables, TError = Error, TContext = unknown> = {
+  mutation?: UseMutationOptions<TData, TError, TVariables, TContext>;
+};
+
+const DEFAULT_CATEGORIES = [
   "Comida",
   "Transporte",
-  "Salud",
   "Casa",
+  "Salud",
   "Entretenimiento",
+  "Servicios",
+  "Salario",
   "Ahorro",
-  "Pago fijo",
-  "Otros",
-];
-const GOAL_COLORS = ["#1D9E75", "#378ADD", "#D85A30", "#BA7517", "#D4537E", "#888780", "#7F77DD", "#E24B4A"];
-const BUDGET_COLORS = ["#1D9E75", "#378ADD", "#D85A30", "#BA7517", "#D4537E", "#888780", "#7F77DD", "#E24B4A"];
+].map((name, index) => ({
+  id: index + 1,
+  name,
+  icon: null,
+  color: null,
+} satisfies Category));
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function clone<T>(value: T): T {
-  if (value === undefined || value === null) return value;
-  return JSON.parse(JSON.stringify(value));
-}
-
-function buildDefaultData(): FintrackData {
-  const categories: Category[] = DEFAULT_CATEGORY_NAMES.map((name, index) => ({
-    id: index + 1,
-    name,
-    icon: null,
-    color: null,
-  }));
-
+function defaultState(): FinState {
   return {
-    version: 1,
-    updatedAt: nowIso(),
-    nextIds: {
-      transactions: 1,
-      budgets: 1,
-      accounts: 1,
-      goals: 1,
-      recurring: 1,
-      categories: categories.length + 1,
-    },
     transactions: [],
     budgets: [],
     accounts: [],
     goals: [],
     recurring: [],
-    categories,
-  };
-}
-
-function normalizeData(input: Partial<FintrackData> | null | undefined): FintrackData {
-  const base = buildDefaultData();
-  const merged: FintrackData = {
-    ...base,
-    ...input,
-    nextIds: {
-      ...base.nextIds,
-      ...(input?.nextIds ?? {}),
+    categories: DEFAULT_CATEGORIES,
+    counters: {
+      transaction: 1,
+      budget: 1,
+      account: 1,
+      goal: 1,
+      recurring: 1,
+      category: DEFAULT_CATEGORIES.length + 1,
     },
-    transactions: (input?.transactions ?? []).map((item) => ({ ...item, amount: Number(item.amount), accountId: item.accountId ?? null })),
-    budgets: (input?.budgets ?? []).map((item) => ({ ...item, limit: Number(item.limit) })),
-    accounts: (input?.accounts ?? []).map((item) => ({ ...item, bal: Number(item.bal) })),
-    goals: (input?.goals ?? []).map((item) => ({ ...item, saved: Number(item.saved), target: Number(item.target) })),
-    recurring: (input?.recurring ?? []).map((item) => ({ ...item, amount: Number(item.amount), accountId: item.accountId ?? null })),
-    categories: input?.categories?.length ? input.categories : base.categories,
-    updatedAt: input?.updatedAt ?? base.updatedAt,
+    updatedAt: new Date().toISOString(),
   };
-
-  merged.nextIds.transactions = Math.max(merged.nextIds.transactions, ...merged.transactions.map((x) => x.id + 1), 1);
-  merged.nextIds.budgets = Math.max(merged.nextIds.budgets, ...merged.budgets.map((x) => x.id + 1), 1);
-  merged.nextIds.accounts = Math.max(merged.nextIds.accounts, ...merged.accounts.map((x) => x.id + 1), 1);
-  merged.nextIds.goals = Math.max(merged.nextIds.goals, ...merged.goals.map((x) => x.id + 1), 1);
-  merged.nextIds.recurring = Math.max(merged.nextIds.recurring, ...merged.recurring.map((x) => x.id + 1), 1);
-  merged.nextIds.categories = Math.max(merged.nextIds.categories, ...merged.categories.map((x) => x.id + 1), 1);
-
-  return merged;
 }
 
-function readLocalData(): FintrackData {
-  if (typeof window === "undefined") return buildDefaultData();
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    const initial = buildDefaultData();
-    writeLocalData(initial);
-    return initial;
-  }
+function isBrowser() {
+  return typeof window !== "undefined" && typeof localStorage !== "undefined";
+}
+
+function readState(): FinState {
+  if (!isBrowser()) return defaultState();
 
   try {
-    return normalizeData(JSON.parse(raw));
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      const initial = defaultState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
+      return initial;
+    }
+    const parsed = JSON.parse(raw) as Partial<FinState>;
+    const base = defaultState();
+    return {
+      ...base,
+      ...parsed,
+      categories: parsed.categories?.length ? parsed.categories : base.categories,
+      counters: { ...base.counters, ...parsed.counters },
+      transactions: parsed.transactions ?? [],
+      budgets: parsed.budgets ?? [],
+      accounts: parsed.accounts ?? [],
+      goals: parsed.goals ?? [],
+      recurring: parsed.recurring ?? [],
+      updatedAt: parsed.updatedAt ?? base.updatedAt,
+    };
   } catch {
-    const initial = buildDefaultData();
-    writeLocalData(initial);
-    return initial;
+    return defaultState();
   }
 }
 
-function writeLocalData(data: FintrackData): void {
-  if (typeof window === "undefined") return;
-  const next = normalizeData({ ...data, updatedAt: nowIso() });
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+function writeState(next: FinState) {
+  if (!isBrowser()) return;
+  const state = { ...next, updatedAt: new Date().toISOString() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-const driveState: DriveStatus = {
-  configured: Boolean(GOOGLE_CLIENT_ID),
-  signedIn: false,
-  syncing: false,
-  lastSyncedAt: null,
-  error: null,
-  email: null,
-};
-
-let googleToken: string | null = null;
-let driveFileId: string | null = null;
-let gisScriptPromise: Promise<void> | null = null;
-const driveListeners = new Set<() => void>();
-
-function emitDriveStatus(): void {
-  driveListeners.forEach((listener) => listener());
+function updateState<T>(updater: (state: FinState) => T): T {
+  const current = readState();
+  const cloned = structuredClone(current);
+  const result = updater(cloned);
+  writeState(cloned);
+  return result;
 }
 
-function setDriveState(patch: Partial<DriveStatus>): void {
-  Object.assign(driveState, patch);
-  emitDriveStatus();
+function nextId(state: FinState, key: keyof FinState["counters"]) {
+  const value = state.counters[key] ?? 1;
+  state.counters[key] = value + 1;
+  return value;
 }
 
-function subscribeDriveStatus(listener: () => void): () => void {
-  driveListeners.add(listener);
-  return () => driveListeners.delete(listener);
+function adjustAccountBalance(state: FinState, accountId: number | null | undefined, delta: number) {
+  if (accountId == null) return;
+  const account = state.accounts.find((entry) => entry.id === accountId);
+  if (account) account.bal += delta;
 }
 
-function getDriveStatusSnapshot(): DriveStatus {
-  return { ...driveState };
+function transactionSignedAmount(input: { amount: number; type: string }) {
+  return input.type === "ingreso" ? Math.abs(input.amount) : -Math.abs(input.amount);
 }
 
-async function loadGoogleIdentityServices(): Promise<void> {
-  if (!GOOGLE_CLIENT_ID) {
-    throw new Error("Falta VITE_GOOGLE_CLIENT_ID. Configúralo antes de conectar Google Drive.");
-  }
-  if (typeof window === "undefined") {
-    throw new Error("Google Drive solo está disponible en el navegador.");
-  }
-  if (window.google?.accounts?.oauth2) return;
-  if (!gisScriptPromise) {
-    gisScriptPromise = new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector('script[data-fintrack-gis="true"]') as HTMLScriptElement | null;
-      if (existing) {
-        existing.addEventListener("load", () => resolve(), { once: true });
-        existing.addEventListener("error", () => reject(new Error("No se pudo cargar Google Identity Services.")), { once: true });
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.defer = true;
-      script.dataset.fintrackGis = "true";
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("No se pudo cargar Google Identity Services."));
-      document.head.appendChild(script);
-    });
-  }
-  await gisScriptPromise;
+export const getListTransactionsQueryKey = () => ["transactions"] as const;
+export const getListBudgetsQueryKey = () => ["budgets"] as const;
+export const getListAccountsQueryKey = () => ["accounts"] as const;
+export const getListGoalsQueryKey = () => ["goals"] as const;
+export const getListRecurringQueryKey = () => ["recurring"] as const;
+export const getListCategoriesQueryKey = () => ["categories"] as const;
+
+function queryHook<TData>(queryKey: QueryKey, getter: () => TData, options?: { query?: UseQueryOptions<TData, Error, TData> }) {
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => getter(),
+    ...options?.query,
+  }) as UseQueryResult<TData, Error> & { queryKey: QueryKey };
+
+  return { ...query, queryKey };
 }
 
-async function requestGoogleAccessToken(prompt: "consent" | "" = "consent"): Promise<string> {
-  await loadGoogleIdentityServices();
-  return new Promise<string>((resolve, reject) => {
-    const tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_SCOPE,
-      callback: (response: { access_token?: string; error?: string; error_description?: string }) => {
-        if (response.error) {
-          reject(new Error(response.error_description || response.error));
-          return;
-        }
-        if (!response.access_token) {
-          reject(new Error("Google no devolvió un token de acceso."));
-          return;
-        }
-        googleToken = response.access_token;
-        setDriveState({ signedIn: true, error: null });
-        resolve(response.access_token);
-      },
-    });
-    tokenClient.requestAccessToken({ prompt });
-  });
-}
-
-async function driveRequest<T>(input: string, init: RequestInit = {}): Promise<T> {
-  const token = googleToken ?? (await requestGoogleAccessToken("")).catch(() => requestGoogleAccessToken("consent"));
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      googleToken = null;
-      setDriveState({ signedIn: false });
-    }
-    throw new Error(`Google Drive devolvió ${response.status} ${response.statusText}`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
-}
-
-async function resolveDriveFileId(): Promise<string | null> {
-  if (driveFileId) return driveFileId;
-  const query = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and 'appDataFolder' in parents and trashed=false`);
-  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)`;
-  const result = await driveRequest<{ files?: Array<{ id: string }> }>(url, { method: "GET" });
-  driveFileId = result.files?.[0]?.id ?? null;
-  return driveFileId;
-}
-
-async function uploadDriveData(data: FintrackData): Promise<void> {
-  const payload = JSON.stringify(normalizeData(data));
-  const fileId = await resolveDriveFileId();
-
-  if (fileId) {
-    await driveRequest<void>(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: payload,
-    });
-    return;
-  }
-
-  const boundary = `fintrack-${Math.random().toString(36).slice(2)}`;
-  const body = [
-    `--${boundary}`,
-    "Content-Type: application/json; charset=UTF-8",
-    "",
-    JSON.stringify({ name: DRIVE_FILE_NAME, parents: ["appDataFolder"] }),
-    `--${boundary}`,
-    "Content-Type: application/json",
-    "",
-    payload,
-    `--${boundary}--`,
-  ].join("\r\n");
-
-  const created = await driveRequest<{ id: string }>("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-    method: "POST",
-    headers: {
-      "Content-Type": `multipart/related; boundary=${boundary}`,
-    },
-    body,
-  });
-  driveFileId = created.id;
-}
-
-async function downloadDriveData(): Promise<FintrackData | null> {
-  const fileId = await resolveDriveFileId();
-  if (!fileId) return null;
-  const token = googleToken ?? (await requestGoogleAccessToken(""));
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    throw new Error(`No se pudo descargar fintrack-data.json (${response.status}).`);
-  }
-  return normalizeData(await response.json());
-}
-
-async function syncToDrive(): Promise<DriveStatus> {
-  setDriveState({ syncing: true, error: null });
-  try {
-    await requestGoogleAccessToken(googleToken ? "" : "consent");
-    const localData = readLocalData();
-    await uploadDriveData(localData);
-    const status = { lastSyncedAt: nowIso(), syncing: false, signedIn: true, error: null };
-    setDriveState(status);
-    return getDriveStatusSnapshot();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "No se pudo sincronizar con Google Drive.";
-    setDriveState({ syncing: false, error: message });
-    throw error;
-  }
-}
-
-async function connectToDrive(): Promise<DriveStatus> {
-  setDriveState({ syncing: true, error: null });
-  try {
-    await requestGoogleAccessToken(googleToken ? "" : "consent");
-    const remote = await downloadDriveData();
-    if (remote) {
-      writeLocalData(remote);
-    } else {
-      await uploadDriveData(readLocalData());
-    }
-    setDriveState({ syncing: false, signedIn: true, lastSyncedAt: nowIso(), error: null });
-    return getDriveStatusSnapshot();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "No se pudo conectar Google Drive.";
-    setDriveState({ syncing: false, error: message });
-    throw error;
-  }
-}
-
-function disconnectFromDrive(): DriveStatus {
-  googleToken = null;
-  driveFileId = null;
-  setDriveState({ signedIn: false, syncing: false, error: null, email: null });
-  return getDriveStatusSnapshot();
-}
-
-async function persistMutation<T>(mutator: (draft: FintrackData) => T | Promise<T>): Promise<T> {
-  const draft = readLocalData();
-  const result = await mutator(draft);
-  writeLocalData(draft);
-  if (driveState.signedIn) {
-    try {
-      await uploadDriveData(draft);
-      setDriveState({ lastSyncedAt: nowIso(), error: null });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo subir el cambio a Google Drive.";
-      setDriveState({ error: message });
-    }
-  }
-  return clone(result);
-}
-
-function getHealthCheckUrl() { return "/api/healthz" as const; }
-function getListTransactionsUrl() { return "/api/transactions" as const; }
-function getListBudgetsUrl() { return "/api/budgets" as const; }
-function getListAccountsUrl() { return "/api/accounts" as const; }
-function getListGoalsUrl() { return "/api/goals" as const; }
-function getListRecurringUrl() { return "/api/recurring" as const; }
-function getListCategoriesUrl() { return "/api/categories" as const; }
-
-export { getHealthCheckUrl, getListTransactionsUrl, getListBudgetsUrl, getListAccountsUrl, getListGoalsUrl, getListRecurringUrl, getListCategoriesUrl };
-
-export const getHealthCheckQueryKey = () => ["/api/healthz"] as const;
-export const getListTransactionsQueryKey = () => ["/api/transactions"] as const;
-export const getListBudgetsQueryKey = () => ["/api/budgets"] as const;
-export const getListAccountsQueryKey = () => ["/api/accounts"] as const;
-export const getListGoalsQueryKey = () => ["/api/goals"] as const;
-export const getListRecurringQueryKey = () => ["/api/recurring"] as const;
-export const getListCategoriesQueryKey = () => ["/api/categories"] as const;
-
-export async function healthCheck(): Promise<HealthStatus> {
-  return { status: "ok" };
-}
-export async function listTransactions(): Promise<Transaction[]> { return clone(readLocalData().transactions); }
-export async function createTransaction(input: CreateTransactionInput): Promise<Transaction> {
-  return persistMutation((draft) => {
-    const amount = Number(input.amount);
-    const tx: Transaction = {
-      id: draft.nextIds.transactions++,
-      name: input.name,
-      cat: input.cat,
-      amount,
-      type: input.type,
-      date: input.date,
-      accountId: input.accountId ?? null,
-      createdAt: nowIso(),
-    };
-    draft.transactions.push(tx);
-    if (tx.accountId) {
-      const account = draft.accounts.find((item) => item.id === tx.accountId);
-      if (account) account.bal += amount;
-    }
-    return tx;
-  });
-}
-export async function deleteTransaction(id: number): Promise<void> {
-  return persistMutation((draft) => {
-    draft.transactions = draft.transactions.filter((item) => item.id !== id);
-  });
-}
-
-export async function listBudgets(): Promise<Budget[]> { return clone(readLocalData().budgets); }
-export async function createBudget(input: CreateBudgetInput): Promise<Budget> {
-  return persistMutation((draft) => {
-    const budget: Budget = {
-      id: draft.nextIds.budgets++,
-      cat: input.cat,
-      limit: Number(input.limit),
-      color: input.color || BUDGET_COLORS[(draft.budgets.length) % BUDGET_COLORS.length],
-    };
-    draft.budgets.push(budget);
-    return budget;
-  });
-}
-export async function deleteBudget(id: number): Promise<void> {
-  return persistMutation((draft) => { draft.budgets = draft.budgets.filter((item) => item.id !== id); });
-}
-
-export async function listAccounts(): Promise<Account[]> { return clone(readLocalData().accounts); }
-export async function createAccount(input: CreateAccountInput): Promise<Account> {
-  return persistMutation((draft) => {
-    const account: Account = {
-      id: draft.nextIds.accounts++,
-      name: input.name,
-      bank: input.bank ?? "",
-      bal: Number(input.bal),
-      color: "#E6F1FB",
-    };
-    draft.accounts.push(account);
-    return account;
-  });
-}
-export async function deleteAccount(id: number): Promise<void> {
-  return persistMutation((draft) => { draft.accounts = draft.accounts.filter((item) => item.id !== id); });
-}
-
-export async function listGoals(): Promise<Goal[]> { return clone(readLocalData().goals); }
-export async function createGoal(input: CreateGoalInput): Promise<Goal> {
-  return persistMutation((draft) => {
-    const goal: Goal = {
-      id: draft.nextIds.goals++,
-      name: input.name,
-      saved: Number(input.saved ?? 0),
-      target: Number(input.target),
-      color: input.color || GOAL_COLORS[(draft.goals.length) % GOAL_COLORS.length],
-    };
-    draft.goals.push(goal);
-    return goal;
-  });
-}
-export async function updateGoal(id: number, input: CreateGoalInput): Promise<Goal> {
-  return persistMutation((draft) => {
-    const goal = draft.goals.find((item) => item.id === id);
-    if (!goal) throw new Error("Meta no encontrada.");
-    goal.name = input.name;
-    goal.saved = Number(input.saved ?? 0);
-    goal.target = Number(input.target);
-    if (input.color) goal.color = input.color;
-    return goal;
-  });
-}
-export async function deleteGoal(id: number): Promise<void> {
-  return persistMutation((draft) => { draft.goals = draft.goals.filter((item) => item.id !== id); });
-}
-
-export async function listRecurring(): Promise<RecurringPayment[]> { return clone(readLocalData().recurring); }
-export async function createRecurring(input: CreateRecurringInput): Promise<RecurringPayment> {
-  return persistMutation((draft) => {
-    const recurring: RecurringPayment = {
-      id: draft.nextIds.recurring++,
-      name: input.name,
-      amount: Number(input.amount),
-      dayOfMonth: Number(input.dayOfMonth),
-      accountId: input.accountId ?? null,
-    };
-    draft.recurring.push(recurring);
-    return recurring;
-  });
-}
-export async function deleteRecurring(id: number): Promise<void> {
-  return persistMutation((draft) => { draft.recurring = draft.recurring.filter((item) => item.id !== id); });
-}
-export async function payRecurring(id: number): Promise<Transaction> {
-  return persistMutation((draft) => {
-    const recurring = draft.recurring.find((item) => item.id === id);
-    if (!recurring) throw new Error("Pago recurrente no encontrado.");
-    const tx: Transaction = {
-      id: draft.nextIds.transactions++,
-      name: recurring.name,
-      cat: "Pago fijo",
-      amount: -Math.abs(Number(recurring.amount)),
-      type: "gasto",
-      date: new Date().toISOString().split("T")[0],
-      accountId: recurring.accountId ?? null,
-      createdAt: nowIso(),
-    };
-    draft.transactions.push(tx);
-    if (tx.accountId) {
-      const account = draft.accounts.find((item) => item.id === tx.accountId);
-      if (account) account.bal -= Math.abs(Number(recurring.amount));
-    }
-    return tx;
-  });
-}
-
-export async function listCategories(): Promise<Category[]> { return clone(readLocalData().categories); }
-export async function createCategory(input: CreateCategoryInput): Promise<Category> {
-  return persistMutation((draft) => {
-    const category: Category = {
-      id: draft.nextIds.categories++,
-      name: input.name,
-      icon: input.icon ?? null,
-      color: input.color ?? null,
-    };
-    draft.categories.push(category);
-    return category;
-  });
-}
-export async function deleteCategory(id: number): Promise<void> {
-  return persistMutation((draft) => { draft.categories = draft.categories.filter((item) => item.id !== id); });
-}
-
-function buildQueryHook<TData>(queryKey: readonly string[], queryFn: () => Promise<TData>, options?: { query?: UseQueryOptions<TData, ErrorType<unknown>, TData> }) {
-  const queryOptions = { queryKey, queryFn, ...(options?.query ?? {}) } as UseQueryOptions<TData, ErrorType<unknown>, TData> & { queryKey: QueryKey };
-  const query = useQuery(queryOptions) as UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey };
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof healthCheck, TData, TError>) {
-  return buildQueryHook(getHealthCheckQueryKey(), healthCheck as any, options as any);
-}
-export function useListTransactions<TData = Awaited<ReturnType<typeof listTransactions>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof listTransactions, TData, TError>) {
-  return buildQueryHook(getListTransactionsQueryKey(), listTransactions as any, options as any);
-}
-export function useListBudgets<TData = Awaited<ReturnType<typeof listBudgets>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof listBudgets, TData, TError>) {
-  return buildQueryHook(getListBudgetsQueryKey(), listBudgets as any, options as any);
-}
-export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof listAccounts, TData, TError>) {
-  return buildQueryHook(getListAccountsQueryKey(), listAccounts as any, options as any);
-}
-export function useListGoals<TData = Awaited<ReturnType<typeof listGoals>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof listGoals, TData, TError>) {
-  return buildQueryHook(getListGoalsQueryKey(), listGoals as any, options as any);
-}
-export function useListRecurring<TData = Awaited<ReturnType<typeof listRecurring>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof listRecurring, TData, TError>) {
-  return buildQueryHook(getListRecurringQueryKey(), listRecurring as any, options as any);
-}
-export function useListCategories<TData = Awaited<ReturnType<typeof listCategories>>, TError = ErrorType<unknown>>(options?: QueryOptions<typeof listCategories, TData, TError>) {
-  return buildQueryHook(getListCategoriesQueryKey(), listCategories as any, options as any);
-}
-
-function buildMutationHook<TData, TVariables>(mutationFn: (variables: TVariables) => Promise<TData>, options?: { mutation?: UseMutationOptions<TData, ErrorType<unknown>, TVariables, unknown> }) {
-  return useMutation<TData, ErrorType<unknown>, TVariables, unknown>({
+function mutationHook<TData, TVariables>(mutationFn: (variables: TVariables) => TData | Promise<TData>, options?: MutationOptions<TData, TVariables>) {
+  return useMutation({
     mutationFn,
     ...(options?.mutation ?? {}),
+  }) as UseMutationResult<TData, Error, TVariables>;
+}
+
+export function useListTransactions<TData = Transaction[]>(options?: { query?: UseQueryOptions<Transaction[], Error, TData> }): UseQueryResult<TData, Error> & { queryKey: QueryKey } {
+  return queryHook(getListTransactionsQueryKey(), () => readState().transactions.sort((a, b) => b.date.localeCompare(a.date)), options as any) as any;
+}
+
+export function useCreateTransaction(options?: MutationOptions<Transaction, { data: CreateTransactionInput }>) {
+  return mutationHook(({ data }) => updateState((state) => {
+    const transaction: Transaction = {
+      id: nextId(state, "transaction"),
+      name: data.name,
+      cat: data.cat,
+      amount: Math.abs(data.amount),
+      type: data.type,
+      date: data.date,
+      accountId: data.accountId ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    state.transactions.unshift(transaction);
+    adjustAccountBalance(state, transaction.accountId, transactionSignedAmount(transaction));
+    return transaction;
+  }), options);
+}
+
+export function useDeleteTransaction(options?: MutationOptions<{ success: true }, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    const index = state.transactions.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      const [removed] = state.transactions.splice(index, 1);
+      adjustAccountBalance(state, removed.accountId, -transactionSignedAmount(removed));
+    }
+    return { success: true as const };
+  }), options);
+}
+
+export function useListBudgets<TData = Budget[]>(options?: { query?: UseQueryOptions<Budget[], Error, TData> }): UseQueryResult<TData, Error> & { queryKey: QueryKey } {
+  return queryHook(getListBudgetsQueryKey(), () => readState().budgets, options as any) as any;
+}
+
+export function useCreateBudget(options?: MutationOptions<Budget, { data: CreateBudgetInput }>) {
+  return mutationHook(({ data }) => updateState((state) => {
+    const budget: Budget = {
+      id: nextId(state, "budget"),
+      cat: data.cat,
+      limit: data.limit,
+      color: data.color ?? "#6366f1",
+    };
+    state.budgets.push(budget);
+    return budget;
+  }), options);
+}
+
+export function useDeleteBudget(options?: MutationOptions<{ success: true }, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    state.budgets = state.budgets.filter((item) => item.id !== id);
+    return { success: true as const };
+  }), options);
+}
+
+export function useListAccounts<TData = Account[]>(options?: { query?: UseQueryOptions<Account[], Error, TData> }): UseQueryResult<TData, Error> & { queryKey: QueryKey } {
+  return queryHook(getListAccountsQueryKey(), () => readState().accounts, options as any) as any;
+}
+
+export function useCreateAccount(options?: MutationOptions<Account, { data: CreateAccountInput }>) {
+  return mutationHook(({ data }) => updateState((state) => {
+    const account: Account = {
+      id: nextId(state, "account"),
+      name: data.name,
+      bank: data.bank ?? "",
+      bal: data.bal,
+      color: ["#6366f1", "#14b8a6", "#f59e0b", "#ec4899"][state.accounts.length % 4],
+    };
+    state.accounts.push(account);
+    return account;
+  }), options);
+}
+
+export function useDeleteAccount(options?: MutationOptions<{ success: true }, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    state.accounts = state.accounts.filter((item) => item.id !== id);
+    state.transactions = state.transactions.map((item) => item.accountId === id ? { ...item, accountId: null } : item);
+    state.recurring = state.recurring.map((item) => item.accountId === id ? { ...item, accountId: null } : item);
+    return { success: true as const };
+  }), options);
+}
+
+export function useListGoals<TData = Goal[]>(options?: { query?: UseQueryOptions<Goal[], Error, TData> }): UseQueryResult<TData, Error> & { queryKey: QueryKey } {
+  return queryHook(getListGoalsQueryKey(), () => readState().goals, options as any) as any;
+}
+
+export function useCreateGoal(options?: MutationOptions<Goal, { data: CreateGoalInput }>) {
+  return mutationHook(({ data }) => updateState((state) => {
+    const goal: Goal = {
+      id: nextId(state, "goal"),
+      name: data.name,
+      saved: data.saved ?? 0,
+      target: data.target,
+      color: data.color ?? "#6366f1",
+    };
+    state.goals.push(goal);
+    return goal;
+  }), options);
+}
+
+export function useUpdateGoal(options?: MutationOptions<Goal, { id: number; data: CreateGoalInput }>) {
+  return mutationHook(({ id, data }) => updateState((state) => {
+    const goal = state.goals.find((item) => item.id === id);
+    if (!goal) throw new Error("Meta no encontrada");
+    goal.name = data.name;
+    goal.target = data.target;
+    goal.saved = data.saved ?? goal.saved;
+    goal.color = data.color ?? goal.color;
+    return goal;
+  }), options);
+}
+
+export function useDeleteGoal(options?: MutationOptions<{ success: true }, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    state.goals = state.goals.filter((item) => item.id !== id);
+    return { success: true as const };
+  }), options);
+}
+
+export function useListRecurring<TData = RecurringPayment[]>(options?: { query?: UseQueryOptions<RecurringPayment[], Error, TData> }): UseQueryResult<TData, Error> & { queryKey: QueryKey } {
+  return queryHook(getListRecurringQueryKey(), () => readState().recurring, options as any) as any;
+}
+
+export function useCreateRecurring(options?: MutationOptions<RecurringPayment, { data: CreateRecurringInput }>) {
+  return mutationHook(({ data }) => updateState((state) => {
+    const recurring: RecurringPayment = {
+      id: nextId(state, "recurring"),
+      name: data.name,
+      amount: data.amount,
+      dayOfMonth: data.dayOfMonth,
+      accountId: data.accountId ?? null,
+    };
+    state.recurring.push(recurring);
+    return recurring;
+  }), options);
+}
+
+export function useDeleteRecurring(options?: MutationOptions<{ success: true }, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    state.recurring = state.recurring.filter((item) => item.id !== id);
+    return { success: true as const };
+  }), options);
+}
+
+export function usePayRecurring(options?: MutationOptions<Transaction, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    const recurring = state.recurring.find((item) => item.id === id);
+    if (!recurring) throw new Error("Pago fijo no encontrado");
+    const today = new Date().toISOString().slice(0, 10);
+    const transaction: Transaction = {
+      id: nextId(state, "transaction"),
+      name: recurring.name,
+      cat: "Servicios",
+      amount: Math.abs(recurring.amount),
+      type: "gasto",
+      date: today,
+      accountId: recurring.accountId ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    state.transactions.unshift(transaction);
+    adjustAccountBalance(state, transaction.accountId, -Math.abs(transaction.amount));
+    return transaction;
+  }), options);
+}
+
+export function useListCategories<TData = Category[]>(options?: { query?: UseQueryOptions<Category[], Error, TData> }): UseQueryResult<TData, Error> & { queryKey: QueryKey } {
+  return queryHook(getListCategoriesQueryKey(), () => readState().categories, options as any) as any;
+}
+
+export function useCreateCategory(options?: MutationOptions<Category, { data: CreateCategoryInput }>) {
+  return mutationHook(({ data }) => updateState((state) => {
+    const category: Category = {
+      id: nextId(state, "category"),
+      name: data.name,
+      icon: data.icon ?? null,
+      color: data.color ?? null,
+    };
+    state.categories.push(category);
+    return category;
+  }), options);
+}
+
+export function useDeleteCategory(options?: MutationOptions<{ success: true }, { id: number }>) {
+  return mutationHook(({ id }) => updateState((state) => {
+    state.categories = state.categories.filter((item) => item.id !== id);
+    return { success: true as const };
+  }), options);
+}
+
+function ensureGoogleClient() {
+  const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) throw new Error("Falta VITE_GOOGLE_CLIENT_ID en el proyecto");
+  if (!window.google?.accounts?.oauth2) throw new Error("Google Identity Services no cargó todavía");
+  return clientId;
+}
+
+let accessToken: string | null = null;
+let tokenClient: any = null;
+
+export function initGoogleDriveAuth() {
+  const clientId = ensureGoogleClient();
+  if (tokenClient) return;
+  tokenClient = window.google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: DRIVE_SCOPE,
+    callback: (response: { access_token?: string }) => {
+      if (response.access_token) accessToken = response.access_token;
+    },
   });
 }
 
-export function useCreateTransaction<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof createTransaction, { data: BodyType<CreateTransactionInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => createTransaction(variables.data), options as any);
-}
-export function useDeleteTransaction<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof deleteTransaction, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => deleteTransaction(variables.id), options as any);
-}
-export function useCreateBudget<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof createBudget, { data: BodyType<CreateBudgetInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => createBudget(variables.data), options as any);
-}
-export function useDeleteBudget<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof deleteBudget, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => deleteBudget(variables.id), options as any);
-}
-export function useCreateAccount<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof createAccount, { data: BodyType<CreateAccountInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => createAccount(variables.data), options as any);
-}
-export function useDeleteAccount<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof deleteAccount, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => deleteAccount(variables.id), options as any);
-}
-export function useCreateGoal<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof createGoal, { data: BodyType<CreateGoalInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => createGoal(variables.data), options as any);
-}
-export function useUpdateGoal<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof updateGoal, { id: number; data: BodyType<CreateGoalInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => updateGoal(variables.id, variables.data), options as any);
-}
-export function useDeleteGoal<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof deleteGoal, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => deleteGoal(variables.id), options as any);
-}
-export function useCreateRecurring<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof createRecurring, { data: BodyType<CreateRecurringInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => createRecurring(variables.data), options as any);
-}
-export function useDeleteRecurring<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof deleteRecurring, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => deleteRecurring(variables.id), options as any);
-}
-export function usePayRecurring<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof payRecurring, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => payRecurring(variables.id), options as any);
-}
-export function useCreateCategory<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof createCategory, { data: BodyType<CreateCategoryInput> }, TError, TContext>) {
-  return buildMutationHook((variables) => createCategory(variables.data), options as any);
-}
-export function useDeleteCategory<TError = ErrorType<unknown>, TContext = unknown>(options?: MutationOptions<typeof deleteCategory, { id: number }, TError, TContext>) {
-  return buildMutationHook((variables) => deleteCategory(variables.id), options as any);
+export async function loginWithGoogleDrive() {
+  initGoogleDriveAuth();
+  await new Promise<void>((resolve, reject) => {
+    tokenClient.callback = (response: { access_token?: string; error?: string }) => {
+      if (response?.access_token) {
+        accessToken = response.access_token;
+        resolve();
+      } else {
+        reject(new Error(response?.error || "No se pudo iniciar sesión con Google"));
+      }
+    };
+    tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
+  });
 }
 
-export function useDriveStatus() {
-  const data = useSyncExternalStore(subscribeDriveStatus, getDriveStatusSnapshot, getDriveStatusSnapshot);
-  return { data };
+function getDriveFileId() {
+  return isBrowser() ? localStorage.getItem(DRIVE_FILE_ID_KEY) : null;
 }
 
-export async function connectGoogleDrive() { return connectToDrive(); }
-export async function syncGoogleDrive() { return syncToDrive(); }
-export function disconnectGoogleDrive() { return disconnectFromDrive(); }
-export function getDriveConfiguration() {
+function setDriveFileId(fileId: string) {
+  if (isBrowser()) localStorage.setItem(DRIVE_FILE_ID_KEY, fileId);
+}
+
+function authHeaders(extra: Record<string, string> = {}) {
+  if (!accessToken) throw new Error("Primero inicia sesión con Google Drive");
+  return { Authorization: `Bearer ${accessToken}`, ...extra };
+}
+
+async function findDriveFile() {
+  const query = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error("No se pudo buscar el archivo en Google Drive");
+  const data = await response.json();
+  return data.files?.[0]?.id ?? null;
+}
+
+async function createDriveFile() {
+  const state = readState();
+  const metadata = { name: DRIVE_FILE_NAME, mimeType: DRIVE_MIME_TYPE };
+  const boundary = "fintrack_boundary";
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: ${DRIVE_MIME_TYPE}\r\n\r\n${JSON.stringify(state)}\r\n` +
+    `--${boundary}--`;
+
+  const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
+    body,
+  });
+  if (!response.ok) throw new Error("No se pudo crear el archivo en Google Drive");
+  const data = await response.json();
+  return data.id as string;
+}
+
+async function ensureDriveFile() {
+  const existing = getDriveFileId() || (await findDriveFile());
+  if (existing) {
+    setDriveFileId(existing);
+    return existing;
+  }
+  const created = await createDriveFile();
+  setDriveFileId(created);
+  return created;
+}
+
+export async function syncStateToGoogleDrive() {
+  await loginWithGoogleDrive();
+  const fileId = await ensureDriveFile();
+  const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: "PATCH",
+    headers: authHeaders({ "Content-Type": DRIVE_MIME_TYPE }),
+    body: JSON.stringify(readState()),
+  });
+  if (!response.ok) throw new Error("No se pudieron guardar los datos en Google Drive");
+  return fileId;
+}
+
+export async function syncStateFromGoogleDrive() {
+  await loginWithGoogleDrive();
+  const fileId = await ensureDriveFile();
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error("No se pudieron leer los datos desde Google Drive");
+  const remote = (await response.json()) as FinState;
+  writeState({ ...defaultState(), ...remote, counters: { ...defaultState().counters, ...(remote.counters ?? {}) } });
+  return fileId;
+}
+
+export function getGoogleDriveStatus(): CloudStatus {
   return {
-    configured: Boolean(GOOGLE_CLIENT_ID),
-    clientId: GOOGLE_CLIENT_ID,
-    scope: DRIVE_SCOPE,
-    fileName: DRIVE_FILE_NAME,
+    connected: !!accessToken,
+    hasFile: !!getDriveFileId(),
+    fileId: getDriveFileId(),
   };
 }
 
+export function exportLocalState() {
+  return readState();
+}
