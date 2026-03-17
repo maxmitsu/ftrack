@@ -30,13 +30,13 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
-      <Route path="/transactions" component={Transactions} />
-      <Route path="/budgets" component={Budgets} />
-      <Route path="/accounts" component={Accounts} />
-      <Route path="/goals" component={Goals} />
-      <Route path="/recurring" component={Recurring} />
-      <Route path="/report" component={Report} />
-      <Route path="/settings" component={Settings} />
+      <Route path="/transacciones" component={Transactions} />
+      <Route path="/presupuesto" component={Budgets} />
+      <Route path="/cuentas" component={Accounts} />
+      <Route path="/metas" component={Goals} />
+      <Route path="/pagos" component={Recurring} />
+      <Route path="/reporte" component={Report} />
+      <Route path="/configuracion" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );
