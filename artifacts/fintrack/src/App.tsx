@@ -42,21 +42,25 @@ function AppRoutes() {
   );
 }
 
-function AppContent() {
+function AppShell() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     const status = getGoogleDriveStatus();
     setLoggedIn(!!status.connected);
+    setChecked(true);
   }, []);
 
-  if (!loggedIn) {
-    return <Login onLoginSuccess={() => setLoggedIn(true)} />;
-  }
+  if (!checked) return null;
 
   return (
     <WouterRouter hook={useHashLocation}>
-      <AppRoutes />
+      {loggedIn ? (
+        <AppRoutes />
+      ) : (
+        <Login onLoginSuccess={() => setLoggedIn(true)} />
+      )}
     </WouterRouter>
   );
 }
@@ -65,7 +69,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AppContent />
+        <AppShell />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
