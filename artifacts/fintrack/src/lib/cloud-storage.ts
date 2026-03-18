@@ -22,6 +22,7 @@ export async function connectGoogleDrive() {
 export async function disconnectGoogleDrive() {
   await logoutGoogleDrive();
   localStorage.removeItem(FILE_ID_KEY);
+  localStorage.removeItem(STATE_KEY);
 }
 
 export function getDriveFileId() {
@@ -29,7 +30,11 @@ export function getDriveFileId() {
 }
 
 export function getLocalState() {
-  return JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+  try {
+    return JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+  } catch {
+    return {};
+  }
 }
 
 export function setLocalState(data: unknown) {
