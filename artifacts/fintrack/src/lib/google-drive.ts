@@ -104,7 +104,7 @@ export async function ensureValidAccessToken(): Promise<void> {
     };
 
     tokenClient.requestAccessToken({
-      prompt: "",
+      prompt: "none",
     });
   });
 }
