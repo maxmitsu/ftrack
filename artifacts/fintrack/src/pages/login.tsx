@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Cloud, RotateCcw } from "lucide-react";
+import { Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   initGoogleDriveAuth,
@@ -14,13 +14,6 @@ type LoginProps = {
 export default function Login({ onLoginSuccess }: LoginProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
-
-  const resetLoginState = () => {
-    setBusy(false);
-    setError("");
-    setAttempt((n) => n + 1);
-  };
 
   const handleLogin = async () => {
     if (busy) return;
@@ -29,15 +22,18 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setBusy(true);
       setError("");
 
-      // Reinicializa el flujo en cada intento
       initGoogleDriveAuth();
 
       await Promise.race([
         loginWithGoogleDrive(),
         new Promise((_, reject) =>
-          setTimeout(() => {
-            reject(new Error("La ventana de inicio de sesión tardó demasiado. Ciérrala y vuelve a intentarlo."));
-          }, 8000)
+          setTimeout(
+            () =>
+              reject(
+                new Error("Inicio de sesión cancelado o agotado.")
+              ),
+            15000
+          )
         ),
       ]);
 
@@ -75,26 +71,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </p>
           </div>
 
-          <Button
-            key={attempt}
-            onClick={handleLogin}
-            disabled={busy}
-            className="w-full"
-          >
+          <Button onClick={handleLogin} disabled={busy} className="w-full">
             {busy ? "Conectando..." : "Iniciar sesión con Google"}
           </Button>
-
-          {busy ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={resetLoginState}
-              className="w-full"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reintentar
-            </Button>
-          ) : null}
 
           {error ? (
             <p className="text-sm text-destructive">{error}</p>
