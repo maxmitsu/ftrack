@@ -47,20 +47,25 @@ function AppShell() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const status = getGoogleDriveStatus();
-    setLoggedIn(!!status.connected);
-    setChecked(true);
+    const syncLoginState = () => {
+      const status = getGoogleDriveStatus();
+      setLoggedIn(!!status.connected);
+      setChecked(true);
+    };
+
+    syncLoginState();
+    window.addEventListener("focus", syncLoginState);
+
+    return () => {
+      window.removeEventListener("focus", syncLoginState);
+    };
   }, []);
 
   if (!checked) return null;
 
   return (
     <WouterRouter hook={useHashLocation}>
-      {loggedIn ? (
-        <AppRoutes />
-      ) : (
-        <Login onLoginSuccess={() => setLoggedIn(true)} />
-      )}
+      {loggedIn ? <AppRoutes /> : <Login onLoginSuccess={() => setLoggedIn(true)} />}
     </WouterRouter>
   );
 }
