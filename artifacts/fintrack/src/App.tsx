@@ -4,7 +4,6 @@ import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { getGoogleDriveStatus } from "@workspace/api-client-react";
 
 import Dashboard from "./pages/dashboard";
 import Transactions from "./pages/transactions";
@@ -16,6 +15,11 @@ import Report from "./pages/report";
 import Settings from "./pages/settings";
 import NotFound from "./pages/not-found";
 import Login from "./pages/login";
+
+import {
+  ensureValidAccessToken,
+  loadDriveData,
+} from "./lib/googleDrive"; // ajusta la ruta real
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,18 +51,30 @@ function AppShell() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const syncLoginState = () => {
-      const status = getGoogleDriveStatus();
-      setLoggedIn(!!status.connected);
-      setChecked(true);
+    const boot = async () => {
+      try {
+        const fileId = localStorage.getItem("fileId");
+
+        if (!fileId) {
+          setLoggedIn(false);
+          setChecked(true);
+          return;
+        }
+
+        await ensureValidAccessToken();
+        await loadDriveData(fileId);
+
+        setLoggedIn(true);
+      } catch (error) {
+        console.error("No se pudo restaurar la sesión:", error);
+        localStorage.removeItem("fileId");
+        setLoggedIn(false);
+      } finally {
+        setChecked(true);
+      }
     };
 
-    syncLoginState();
-    window.addEventListener("focus", syncLoginState);
-
-    return () => {
-      window.removeEventListener("focus", syncLoginState);
-    };
+    boot();
   }, []);
 
   if (!checked) return null;
