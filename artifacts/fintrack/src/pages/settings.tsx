@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getCategoryIcon } from "@/lib/utils";
+import { disconnectGoogleDrive } from "@/lib/cloud-storage";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -170,16 +171,16 @@ export default function Settings() {
     try {
       setCloudBusy(true);
 
-      // Cierre visual/local de estado.
-      // Esto NO garantiza logout real de Google si el cliente lo guarda internamente.
+      disconnectGoogleDrive();
       setCloudStatus({ connected: false, hasFile: false });
       setLastSavedAt(null);
 
       toast({
         title: "Sesión cerrada",
-        description:
-          "Se limpió el estado de la app. Si el cliente de Google sigue activo internamente, habrá que añadir logout en @workspace/api-client-react.",
+        description: "Se desconectó Google Drive correctamente.",
       });
+
+      window.location.reload();
     } finally {
       setCloudBusy(false);
     }
