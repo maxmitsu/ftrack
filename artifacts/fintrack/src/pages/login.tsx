@@ -23,7 +23,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setError("");
 
       initGoogleDriveAuth();
-      await loginWithGoogleDrive();
+
+      await Promise.race([
+        loginWithGoogleDrive(),
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error("Inicio de sesión cancelado o agotado.")
+              ),
+            15000
+          )
+        ),
+      ]);
 
       const status = getGoogleDriveStatus();
 
