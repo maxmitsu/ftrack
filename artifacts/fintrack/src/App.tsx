@@ -53,11 +53,10 @@ function AppShell() {
   useEffect(() => {
     const boot = async () => {
       try {
-        const fileId = localStorage.getItem("fileId");
+        const fileId = localStorage.getItem("fintrack_drive_file_id");
 
         if (!fileId) {
           setLoggedIn(false);
-          setChecked(true);
           return;
         }
 
@@ -67,7 +66,6 @@ function AppShell() {
         setLoggedIn(true);
       } catch (error) {
         console.error("No se pudo restaurar la sesión:", error);
-        localStorage.removeItem("fileId");
         setLoggedIn(false);
       } finally {
         setChecked(true);
@@ -77,7 +75,7 @@ function AppShell() {
     boot();
   }, []);
 
-  if (!checked) return null;
+  if (!checked) return <div>Cargando...</div>;
 
   return (
     <WouterRouter hook={useHashLocation}>
