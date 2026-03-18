@@ -16,6 +16,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [error, setError] = useState("");
 
   const handleLogin = async () => {
+    if (busy) return;
+
     try {
       setBusy(true);
       setError("");
@@ -24,13 +26,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       await loginWithGoogleDrive();
 
       const status = getGoogleDriveStatus();
+
       if (status.connected) {
         onLoginSuccess();
-      } else {
-        setError("No se pudo iniciar sesión con Google.");
+        return;
       }
+
+      setError("No se pudo iniciar sesión con Google.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al iniciar sesión.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Inicio de sesión cancelado o fallido."
+      );
     } finally {
       setBusy(false);
     }
