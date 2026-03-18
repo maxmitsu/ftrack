@@ -57,9 +57,15 @@ function AppShell() {
           return;
         }
 
-        await ensureValidAccessToken();
-        await loadDriveData(fileId);
+        try {
+          await ensureValidAccessToken();
+        } catch (error) {
+          console.warn("No se pudo restaurar sesión silenciosamente:", error);
+          setLoggedIn(false);
+          return;
+        }
 
+        await loadDriveData(fileId);
         setLoggedIn(true);
       } catch (error) {
         console.error("No se pudo restaurar la sesión:", error);
