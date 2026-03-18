@@ -17,6 +17,10 @@ export async function connectGoogleDrive() {
   return fileId;
 }
 
+export function disconnectGoogleDrive() {
+  localStorage.removeItem(FILE_ID_KEY);
+}
+
 export function getDriveFileId() {
   return localStorage.getItem(FILE_ID_KEY);
 }
