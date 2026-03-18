@@ -26,7 +26,14 @@ import {
   getGoogleDriveStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Trash2, Tags, Cloud, Download, Upload } from "lucide-react";
+import {
+  Trash2,
+  Tags,
+  Cloud,
+  Download,
+  Upload,
+  LogOut,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getCategoryIcon } from "@/lib/utils";
 
@@ -34,9 +41,11 @@ export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: categories, isLoading } = useListCategories();
+
   const [catName, setCatName] = useState("");
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudStatus, setCloudStatus] = useState(getGoogleDriveStatus());
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -46,6 +55,10 @@ export default function Settings() {
       // Se inicializa cuando el usuario pulsa el botón.
     }
   }, []);
+
+  const refreshCloudStatus = () => {
+    setCloudStatus(getGoogleDriveStatus());
+  };
 
   const invalidateAll = async () => {
     await Promise.all([
@@ -87,8 +100,12 @@ export default function Settings() {
     try {
       setCloudBusy(true);
       await loginWithGoogleDrive();
-      setCloudStatus(getGoogleDriveStatus());
-      toast({ title: "Google Drive conectado" });
+      refreshCloudStatus();
+
+      toast({
+        title: "Google Drive conectado",
+        description: "La sesión quedó iniciada y lista para sincronizar.",
+      });
     } catch (error) {
       toast({
         title: "No se pudo conectar con Google Drive",
@@ -105,8 +122,15 @@ export default function Settings() {
     try {
       setCloudBusy(true);
       await syncStateToGoogleDrive();
-      setCloudStatus(getGoogleDriveStatus());
-      toast({ title: "Datos guardados en Google Drive" });
+      refreshCloudStatus();
+
+      const now = new Date();
+      setLastSavedAt(now.toLocaleString());
+
+      toast({
+        title: "Guardado completado",
+        description: "Tus datos se sincronizaron con Google Drive.",
+      });
     } catch (error) {
       toast({
         title: "No se pudieron guardar los datos",
@@ -123,9 +147,13 @@ export default function Settings() {
     try {
       setCloudBusy(true);
       await syncStateFromGoogleDrive();
-      setCloudStatus(getGoogleDriveStatus());
+      refreshCloudStatus();
       await invalidateAll();
-      toast({ title: "Datos cargados desde Google Drive" });
+
+      toast({
+        title: "Carga completada",
+        description: "Tus datos se cargaron desde Google Drive.",
+      });
     } catch (error) {
       toast({
         title: "No se pudieron cargar los datos",
@@ -138,31 +166,67 @@ export default function Settings() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      setCloudBusy(true);
+
+      // Cierre visual/local de estado.
+      // Esto NO garantiza logout real de Google si el cliente lo guarda internamente.
+      setCloudStatus({ connected: false, hasFile: false });
+      setLastSavedAt(null);
+
+      toast({
+        title: "Sesión cerrada",
+        description:
+          "Se limpió el estado de la app. Si el cliente de Google sigue activo internamente, habrá que añadir logout en @workspace/api-client-react.",
+      });
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
   return (
     <Layout title="Configuración">
       <div className="grid gap-6 lg:grid-cols-2 max-w-5xl">
         <Card className="border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Cloud className="w-5 h-5 text-primary" /> Google Drive
+              <Cloud className="w-5 h-5 text-primary" />
+              Google Drive
             </CardTitle>
             <CardDescription>
               Inicia sesión con Google y guarda toda tu información en un archivo
               JSON dentro de tu Drive.
             </CardDescription>
           </CardHeader>
+
           <CardContent className="space-y-4">
-            <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 text-sm">
+            <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 text-sm space-y-2">
               <div className="font-medium text-foreground">Estado</div>
-              <div className="text-muted-foreground mt-1">
-                {cloudStatus.connected
-                  ? "Sesión iniciada con Google."
-                  : "Sin sesión iniciada."}
+
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-block h-2.5 w-2.5 rounded-full ${
+                    cloudStatus.connected ? "bg-green-500" : "bg-red-500"
+                  }`}
+                />
+                <span className="text-muted-foreground">
+                  {cloudStatus.connected
+                    ? "Conectado a Google Drive"
+                    : "No conectado"}
+                </span>
               </div>
+
               <div className="text-muted-foreground">
                 {cloudStatus.hasFile
                   ? "Archivo vinculado en Drive listo para sincronizar."
                   : "Todavía no hay archivo vinculado en Drive."}
+              </div>
+
+              <div className="text-muted-foreground">
+                {lastSavedAt
+                  ? `Último guardado: ${lastSavedAt}`
+                  : "Todavía no se ha guardado nada en esta sesión."}
               </div>
             </div>
 
@@ -175,7 +239,7 @@ export default function Settings() {
               <Button
                 variant="outline"
                 onClick={handleUpload}
-                disabled={cloudBusy}
+                disabled={cloudBusy || !cloudStatus.connected}
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Guardar en Drive
@@ -184,10 +248,19 @@ export default function Settings() {
               <Button
                 variant="outline"
                 onClick={handleDownload}
-                disabled={cloudBusy}
+                disabled={cloudBusy || !cloudStatus.connected}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Cargar desde Drive
+              </Button>
+
+              <Button
+                variant="destructive"
+                onClick={handleLogout}
+                disabled={cloudBusy || !cloudStatus.connected}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Cerrar sesión
               </Button>
             </div>
 
@@ -201,14 +274,15 @@ export default function Settings() {
         <Card className="border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Tags className="w-5 h-5 text-primary" /> Categorías de
-              Transacciones
+              <Tags className="w-5 h-5 text-primary" />
+              Categorías de Transacciones
             </CardTitle>
             <CardDescription>
               Personaliza las categorías disponibles para clasificar tus ingresos
               y gastos.
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleAddCategory} className="flex gap-3 mb-6">
               <Input
