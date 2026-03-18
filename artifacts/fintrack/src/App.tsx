@@ -16,10 +16,7 @@ import Settings from "./pages/settings";
 import NotFound from "./pages/not-found";
 import Login from "./pages/login";
 
-import {
-  ensureValidAccessToken,
-  loadDriveData,
-} from "./lib/googleDrive"; // ajusta la ruta real
+import { ensureValidAccessToken, loadDriveData } from "./lib/google-drive";
 
 const queryClient = new QueryClient({
   defaultOptions: {
