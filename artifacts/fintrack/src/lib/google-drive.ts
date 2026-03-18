@@ -91,7 +91,7 @@ export async function ensureValidAccessToken(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     tokenClient.callback = (resp: any) => {
       if (resp?.error) {
-        reject(new Error(resp.error));
+        reject(new Error(`silent_auth_failed: ${resp.error}`));
         return;
       }
 
@@ -99,7 +99,7 @@ export async function ensureValidAccessToken(): Promise<void> {
         setToken(resp);
         resolve();
       } else {
-        reject(new Error("No se obtuvo access token"));
+        reject(new Error("silent_auth_failed: no_access_token"));
       }
     };
 
