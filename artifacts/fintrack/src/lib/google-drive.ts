@@ -20,10 +20,20 @@ function getClientId(): string {
   return clientId;
 }
 
-export function initGoogleAuth() {
-  if (!window.google?.accounts?.oauth2) {
-    throw new Error("Google Identity Services no cargó");
+async function waitForGoogleIdentityServices(timeoutMs = 10000): Promise<void> {
+  const start = Date.now();
+
+  while (!window.google?.accounts?.oauth2) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("Google Identity Services no cargó a tiempo");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
+}
+
+export async function initGoogleAuth() {
+  await waitForGoogleIdentityServices();
 
   if (tokenClient) return;
 
@@ -45,7 +55,7 @@ function setToken(resp: any) {
 }
 
 export async function loginWithGoogleDrive(): Promise<void> {
-  initGoogleAuth();
+  await initGoogleAuth();
 
   await new Promise<void>((resolve, reject) => {
     tokenClient.callback = (resp: any) => {
@@ -69,7 +79,7 @@ export async function loginWithGoogleDrive(): Promise<void> {
 }
 
 export async function ensureValidAccessToken(): Promise<void> {
-  initGoogleAuth();
+  await initGoogleAuth();
 
   const stillValid =
     accessToken &&
